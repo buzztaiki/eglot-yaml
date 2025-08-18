@@ -94,15 +94,14 @@
 
 (defun eglot-yaml--register-file-schema (file schema-uri)
   "Register FILE and SCHEMA-URI pair to `eglot-yaml--file-schema-alist'."
-  (let* ((absname (expand-file-name file))
-         (entry (assoc absname eglot-yaml--file-schema-alist)))
+  (let* ((absname (expand-file-name file)))
     (setf (alist-get absname eglot-yaml--file-schema-alist nil nil #'equal)
           schema-uri)))
 
 (defun eglot-yaml--unregister-file-schema (file)
   "Unregister FILE from `eglot-yaml--file-schema-alist'."
   (setq eglot-yaml--file-schema-alist
-        (assoc-delete-all (expand-file-name (buffer-file-name)) eglot-yaml--file-schema-alist)))
+        (assoc-delete-all (expand-file-name file) eglot-yaml--file-schema-alist)))
 
 (defun eglot-yaml--collect-project-schema-associations (project)
   "Collect schema associations of PROJECT.
@@ -121,7 +120,7 @@ Return value is a plist of the form:
       associations))
 
 
-(cl-defgeneric eglot-yaml-after-connect (server)
+(cl-defgeneric eglot-yaml-after-connect (_server)
   "Hook funtion to run after connecting to SERVER."
   nil)
 
