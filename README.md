@@ -4,9 +4,12 @@ YAML Language Server protocol extention for [Eglot](https://github.com/joaotavor
 
 ## Installation
 ```lisp
-(require 'eglot-yaml)
-(add-to-list 'eglot-server-programs
-             '((yaml-ts-mode yaml-mode) eglot-yaml-lsp-server "yaml-language-server" "--stdio"))
+(use-package eglot-yaml :ensure t
+  :after (eglot)
+  :vc (:url "https://github.com/buzztaiki/eglot-yaml.git")
+  :init
+  (add-to-list 'eglot-server-programs
+               '((yaml-ts-mode yaml-mode) eglot-yaml-lsp-server "yaml-language-server" "--stdio")))
 ```
 
 ## Featuers
