@@ -87,7 +87,7 @@
   (eglot--signal-project-schema-associations server))
 
 (defun eglot--signal-project-schema-associations (server)
-  "Signal schema associations to project of SERVER."
+  "Signal schema associations of project to SERVER."
   (eglot-yaml--signal-schema-associations
    server
    (eglot-yaml--collect-project-schema-associations (eglot--project server))))
@@ -108,27 +108,26 @@
 
 Return value is a plist of the form:
 \(:SCHEMA-URI1 [\"glob\" ...] :SCHEMA-URI2 [\"glob\" ...] ...)"
-    (let ((root (expand-file-name (project-root project)))
-          associations)
-      (pcase-dolist (`(,file . ,schema-uri) eglot-yaml--file-schema-alist)
-        (when-let* ((relname (and (string-prefix-p root file)
-                                  (file-relative-name file root)))
-                    (glob (concat "/" relname))
-                    (schema-prop (intern (concat ":" schema-uri))))
-          (setq associations (plist-put associations schema-prop
-                                        (vconcat (list glob) (plist-get associations schema-prop))))))
-      associations))
+  (let ((root (expand-file-name (project-root project)))
+        associations)
+    (pcase-dolist (`(,file . ,schema-uri) eglot-yaml--file-schema-alist)
+      (when-let* ((relname (and (string-prefix-p root file) (file-relative-name file root)))
+                  (glob (concat "/" relname))
+                  (schema-prop (intern (concat ":" schema-uri))))
+        (setq associations (plist-put associations schema-prop
+                                      (vconcat (list glob) (plist-get associations schema-prop))))))
+    associations))
 
 
-(cl-defgeneric eglot-yaml-after-connect (_server)
+(cl-defgeneric eglot-yaml--after-connect (_server)
   "Hook funtion to run after connecting to SERVER."
   nil)
 
-(cl-defmethod eglot-yaml-after-connect ((server eglot-yaml-lsp-server))
+(cl-defmethod eglot-yaml--after-connect ((server eglot-yaml-lsp-server))
   "Hook funtion to run after connecting to SERVER."
   (eglot--signal-project-schema-associations server))
 
-(add-hook 'eglot-connect-hook #'eglot-yaml-after-connect)
+(add-hook 'eglot-connect-hook #'eglot-yaml--after-connect)
 
 (provide 'eglot-yaml)
 ;;; eglot-yaml.el ends here
