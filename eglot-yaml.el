@@ -39,7 +39,7 @@
 (defvar eglot-yaml--file-schema-alist nil
   "Alist mapping file to schema URIs.")
 
-;;###autoload
+;;;###autoload
 (defclass eglot-yaml-lsp-server (eglot-lsp-server) ()
   :documentation "YAML language server.")
 
