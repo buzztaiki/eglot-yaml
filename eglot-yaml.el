@@ -37,8 +37,8 @@
 
 (defcustom eglot-yaml-custom-schema-resolvers
   '(eglot-yaml-kubernetes-schema-resolver)
-  "Custom schema providers.
-List of functions that take (BUFFER) and return schema-uri or nil."
+  "List of custom schema resolver function.
+Each function that calls no argument on document buffer and should return schema-uri or nil."
   :type '(repeat function))
 
 (defcustom eglot-yaml-kubernetes-schema-base-url
@@ -55,6 +55,7 @@ List of functions that take (BUFFER) and return schema-uri or nil."
 ;;;###autoload
 (defclass eglot-yaml-lsp-server (eglot-lsp-server) ()
   :documentation "YAML language server.")
+
 
 (defun eglot-yaml--get-all-schemas (server)
   (jsonrpc-request server :yaml/get/all/jsonSchemas (vector (eglot-path-to-uri (buffer-file-name)))))
@@ -73,13 +74,6 @@ List of functions that take (BUFFER) and return schema-uri or nil."
    document-uri &rest _)
   (eglot-yaml--resolve-schema document-uri))
 
-(defun eglot-yaml--resolve-schema (document-uri)
-  "Resolve DOCUMENT-URI schema by `eglot-yaml-custom-schema-resolvers'."
-  (when-let* ((buffer (get-file-buffer (eglot-uri-to-path document-uri))))
-    (cl-loop for x in eglot-yaml-custom-schema-resolvers
-             for schema-uri = (funcall x buffer)
-             when schema-uri
-             return schema-uri)))
 
 (defun eglot-yaml-show-schema (server)
   "Show current buffer schema."
@@ -154,27 +148,35 @@ Return value is a plist of the form:
     associations))
 
 
+(defun eglot-yaml--resolve-schema (document-uri)
+  "Resolve DOCUMENT-URI schema by `eglot-yaml-custom-schema-resolvers'."
+  (when-let* ((buffer (get-file-buffer (eglot-uri-to-path document-uri))))
+    (cl-loop for x in eglot-yaml-custom-schema-resolvers
+             for schema-uri = (with-current-buffer buffer
+                                (save-excursion
+                                  (without-restriction
+                                    (goto-char (point-min))
+                                    (funcall x))))
+             when schema-uri
+             return schema-uri)))
+
 ;; TODO: skip when multi schema yaml
-(defun eglot-yaml-kubernetes-schema-resolver (buffer)
-  "Resolve kubernetes schmema for BUFFER."
-  (with-current-buffer buffer
-    (save-excursion
-      (without-restriction
-        (goto-char (point-min))
-        ;; https://github.com/yannh/kubeconform?tab=readme-ov-file#overriding-schemas-location
-        (when-let* ((api-version (save-excursion (and (re-search-forward "^apiVersion:[ \t]*\\([^ \t\n]+\\).*$" nil t) (match-string 1))))
-                    (kind (save-excursion (and (re-search-forward "^kind:[ \t]*\\([^ \t\n]+\\).*$" nil t) (match-string 1)))))
-          (if (not (string-match-p "\\." api-version))
-              ;; Kubernetes: https://raw.githubusercontent.com/yannh/kubernetes-json-schema/master/{{.NormalizedKubernetesVersion}}-standalone{{.StrictSuffix}}/{{.ResourceKind}}{{.KindSuffix}}.json
-              (format "%s/%s-%s.json"
-                      eglot-yaml-kubernetes-schema-base-url
-                      (downcase kind)
-                      (string-replace "/" "-" (downcase api-version)))
-            ;; CRD: https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json
-            (pcase-let ((`(,group ,version) (string-split api-version "/")))
-              (format "%s/%s/%s_%s.json"
-                      eglot-yaml-kubernetes-crds-schema-base-url
-                      (downcase group) (downcase kind) (downcase version)))))))))
+(defun eglot-yaml-kubernetes-schema-resolver ()
+  "Resolve kubernetes schmema for current buffer."
+  ;; https://github.com/yannh/kubeconform?tab=readme-ov-file#overriding-schemas-location
+  (when-let* ((api-version (save-excursion (and (re-search-forward "^apiVersion:[ \t]*\\([^ \t\n]+\\).*$" nil t) (match-string 1))))
+              (kind (save-excursion (and (re-search-forward "^kind:[ \t]*\\([^ \t\n]+\\).*$" nil t) (match-string 1)))))
+    (if (not (string-match-p "\\." api-version))
+        ;; Kubernetes: https://raw.githubusercontent.com/yannh/kubernetes-json-schema/master/{{.NormalizedKubernetesVersion}}-standalone{{.StrictSuffix}}/{{.ResourceKind}}{{.KindSuffix}}.json
+        (format "%s/%s-%s.json"
+                eglot-yaml-kubernetes-schema-base-url
+                (downcase kind)
+                (string-replace "/" "-" (downcase api-version)))
+      ;; CRD: https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json
+      (pcase-let ((`(,group ,version) (string-split api-version "/")))
+        (format "%s/%s/%s_%s.json"
+                eglot-yaml-kubernetes-crds-schema-base-url
+                (downcase group) (downcase kind) (downcase version))))))
 
 
 (cl-defgeneric eglot-yaml--after-connect (_server)
