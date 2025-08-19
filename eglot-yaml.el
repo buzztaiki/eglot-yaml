@@ -39,6 +39,10 @@
 (defvar eglot-yaml--file-schema-alist nil
   "Alist mapping file to schema URIs.")
 
+(defvar eglot-yaml-custom-schema-providers '(eglot-yaml-resolve-kubernetes-schema)
+  "Custom schema providers.
+A list of functions that take (BUFFER) and return schema-uri or nil.")
+
 ;;;###autoload
 (defclass eglot-yaml-lsp-server (eglot-lsp-server) ()
   :documentation "YAML language server.")
@@ -61,8 +65,12 @@
   (eglot-yaml--resolve-schema document-uri))
 
 (defun eglot-yaml--resolve-schema (document-uri)
-  "Resolve DOCUMENT-URI custom schema."
-  (assoc-default (eglot-uri-to-path document-uri) eglot-yaml--file-schema-alist))
+  "Resolve DOCUMENT-URI schema by `eglot-yaml-custom-schema-providers'."
+  (when-let* ((buffer (get-file-buffer (eglot-uri-to-path document-uri))))
+    (cl-loop for x in eglot-yaml-custom-schema-providers
+             for schema-uri = (funcall x buffer)
+             when schema-uri
+             return schema-uri))))
 
 (defun eglot-yaml-show-schema (server)
   "Show current buffer schema."
@@ -137,6 +145,33 @@ Return value is a plist of the form:
     associations))
 
 
+(defvar eglot-yaml-kubernetes-schema-base-url "https://raw.githubusercontent.com/yannh/kubernetes-json-schema/master/v1.33.4-standalone-strict")
+(defvar eglot-yaml-kubernetes-crd-schema-base-url "https://raw.githubusercontent.com/datreeio/CRDs-catalog/main")
+
+;; TODO: defcustom
+;; TODO: skip when multi schema yaml
+(defun eglot-yaml-resolve-kubernetes-schema (buffer)
+  "Resolve kubernetes schmema for BUFFER."
+  (with-current-buffer buffer
+    (save-excursion
+      (without-restriction
+        (goto-char (point-min))
+        ;; https://github.com/yannh/kubeconform?tab=readme-ov-file#overriding-schemas-location
+        (when-let* ((api-version (save-excursion (and (re-search-forward "^apiVersion:[ \t]*\\([^ \t\n]+\\).*$" nil t) (match-string 1))))
+                    (kind (save-excursion (and (re-search-forward "^kind:[ \t]*\\([^ \t\n]+\\).*$" nil t) (match-string 1)))))
+          (if (not (string-match-p "\\." api-version))
+              ;; Kubernetes: https://raw.githubusercontent.com/yannh/kubernetes-json-schema/master/{{.NormalizedKubernetesVersion}}-standalone{{.StrictSuffix}}/{{.ResourceKind}}{{.KindSuffix}}.json
+              (format "%s/%s-%s.json"
+                      eglot-yaml-kubernetes-schema-base-url
+                      (downcase kind)
+                      (string-replace "/" "-" (downcase api-version)))
+            ;; CRD: https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json
+            (pcase-let ((`(,group ,version) (string-split api-version "/")))
+              (format "%s/%s/%s_%s.json"
+                      eglot-yaml-kubernetes-crd-schema-base-url
+                      (downcase group) (downcase kind) (downcase version)))))))))
+
+
 (cl-defgeneric eglot-yaml--after-connect (_server)
   "Hook funtion to run after connecting to SERVER."
   nil)
@@ -144,7 +179,7 @@ Return value is a plist of the form:
 (cl-defmethod eglot-yaml--after-connect ((server eglot-yaml-lsp-server))
   "Hook funtion to run after connecting to SERVER."
   (eglot--signal-project-schema-associations server)
-  (eglot-yaml--signal-register-custom-schema-request))
+  (eglot-yaml--signal-register-custom-schema-request server))
 
 (add-hook 'eglot-connect-hook #'eglot-yaml--after-connect)
 
