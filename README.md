@@ -1,6 +1,6 @@
 # eglot-yaml
 
-YAML Language Server protocol extention for [Eglot](https://github.com/joaotavora/eglot/).
+YAML Language Server protocol extension for [Eglot](https://github.com/joaotavora/eglot/).
 
 ## Installation
 ```lisp
@@ -13,7 +13,7 @@ YAML Language Server protocol extention for [Eglot](https://github.com/joaotavor
 ```
 
 
-## Featuers
+## Features
 
 ### Dynamic schema association
 You can associate a schema with a YAML document from buffer.

@@ -1,4 +1,4 @@
-;;; eglot-yaml.el --- YAML Language Server protocol extention for Eglot -*- lexical-binding: t; -*-
+;;; eglot-yaml.el --- YAML Language Server protocol extension for Eglot -*- lexical-binding: t; -*-
 
 ;; Copyright (C) 2025  Taiki Sugawara
 
@@ -28,7 +28,7 @@
 (require 'eglot)
 
 (defgroup eglot-yaml nil
-  "YAML Language Server protocol extention for Eglot."
+  "YAML Language Server protocol extension for Eglot."
   :prefix "eglot-yaml-"
   :group 'eglot)
 
@@ -37,8 +37,8 @@
 
 (defcustom eglot-yaml-custom-schema-resolvers
   '(eglot-yaml-kubernetes-schema-resolver)
-  "List of custom schema resolver function.
-Each function that calls no argument on document buffer and should return schema-uri or nil."
+  "List of custom schema resolver functions.
+Each function takes no arguments and operates on the document buffer, and should return a schema URI or nil."
   :type '(repeat function))
 
 (defcustom eglot-yaml-kubernetes-schema-base-url
@@ -83,7 +83,7 @@ Each function that calls no argument on document buffer and should return schema
 ;;;###autoload
 (defun eglot-yaml-set-schema (server schema-uri)
   "Set current buffer SCHEMA-URI.
-IF SERVER is nil, only register SCHEMA-URI for future LSP session."
+If SERVER is nil, only register SCHEMA-URI for future LSP session."
   (interactive (let ((server (eglot--current-server-or-lose)))
                  (list server (eglot-yaml--read-schema server :uri nil))))
   (eglot-yaml--register-file-schema (buffer-file-name) schema-uri)
@@ -162,8 +162,8 @@ Return value is a plist of the form:
 
 ;; TODO: skip when multi schema yaml
 (defun eglot-yaml-kubernetes-schema-resolver ()
-  "Resolve kubernetes schmema for current buffer."
-  ;; https://github.com/yannh/kubeconform?tab=readme-ov-file#overriding-schemas-location
+  "Resolve kubernetes schema for current buffer."
+  ;; see https://github.com/yannh/kubeconform#overriding-schemas-location
   (when-let* ((api-version (save-excursion (and (re-search-forward "^apiVersion:[ \t]*\\([^ \t\n]+\\).*$" nil t) (match-string 1))))
               (kind (save-excursion (and (re-search-forward "^kind:[ \t]*\\([^ \t\n]+\\).*$" nil t) (match-string 1)))))
     (if (not (string-match-p "\\." api-version))
@@ -180,11 +180,11 @@ Return value is a plist of the form:
 
 
 (cl-defgeneric eglot-yaml--after-connect (_server)
-  "Hook funtion to run after connecting to SERVER."
+  "Hook function to run after connecting to SERVER."
   nil)
 
 (cl-defmethod eglot-yaml--after-connect ((server eglot-yaml-lsp-server))
-  "Hook funtion to run after connecting to SERVER."
+  "Hook function to run after connecting to SERVER."
   (eglot-yaml--signal-project-schema-associations server)
   (eglot-yaml--signal-register-custom-schema-request server))
 
