@@ -154,7 +154,8 @@ Return value is a plist of the form:
     (cl-loop for x in eglot-yaml-custom-schema-resolvers
              for schema-uri = (with-current-buffer buffer
                                 (save-excursion
-                                  (without-restriction
+                                  (save-restriction
+                                    (widen)
                                     (goto-char (point-min))
                                     (funcall x))))
              when schema-uri
