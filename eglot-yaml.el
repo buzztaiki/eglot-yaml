@@ -53,19 +53,22 @@
   (jsonrpc-notify server :json/schemaAssociations associations))
 
 (defun eglot-yaml-show-schema (server)
-  "Show current buffer schema for SERVER."
+  "Show current buffer schema."
   (interactive (list (eglot--current-server-or-lose)))
   (message "%s" (eglot-yaml--get-schemas server)))
 
+;;;###autoload
 (defun eglot-yaml-set-schema (server schema-uri)
-  "Set current buffer SCHEMA-URI for SERVER."
+  "Set current buffer SCHEMA-URI.
+IF SERVER is nil, only register SCHEMA-URI for future LSP session."
   (interactive (let ((server (eglot--current-server-or-lose)))
                  (list server (eglot-yaml--read-schema server :uri nil))))
   (eglot-yaml--register-file-schema (buffer-file-name) schema-uri)
-  (eglot--signal-project-schema-associations server))
+  (when server
+    (eglot--signal-project-schema-associations server)))
 
 (defun eglot-yaml-select-schema (server)
-  "Select current buffer schema by name for SERVER."
+  "Select current buffer schema by name."
   (interactive (list (eglot--current-server-or-lose)))
   (eglot-yaml-set-schema server (eglot-yaml--read-schema server :name t)))
 
@@ -80,11 +83,14 @@
                 (lambda (x) (format " %s" (or (plist-get (assoc-default x schemas) :description) ""))))))
     (completing-read "Select schema: " schemas nil require-match)))
 
+;;;###autoload
 (defun eglot-yaml-reset-schema (server)
-  "Reset current buffer schema for SERVER."
+  "Reset current buffer schema.
+IF SERVER is nil, only unregister SCHEMA-URI for future LSP session."
   (interactive (list (eglot--current-server-or-lose)))
   (eglot-yaml--unregister-file-schema (buffer-file-name))
-  (eglot--signal-project-schema-associations server))
+  (when server
+    (eglot--signal-project-schema-associations server)))
 
 (defun eglot--signal-project-schema-associations (server)
   "Signal schema associations of project to SERVER."
