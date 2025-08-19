@@ -3,7 +3,8 @@
 ;; Copyright (C) 2025  Taiki Sugawara
 
 ;; Author: Taiki Sugawara <buzz.taiki@gmail.com>
-;; Keywords:
+;; URL: https://github.com/buzztaiki/eglot-yaml
+;; Package-Requires: ((emacs "30.1") (eglot "1.18"))
 
 ;; This program is free software; you can redistribute it and/or modify
 ;; it under the terms of the GNU General Public License as published by
@@ -20,28 +21,36 @@
 
 ;;; Commentary:
 
-;;
-
-;;; TODO:
-;; - custom schema provider
-;;   - use yaml/registerCustomSchemaRequest client notification and handle custom/schema/request server request
-;;   - but:
-;;     - custom/schema/request could not use kubernetes special uri
-;;     - "Matches multiple schemas when only one must validate" problem has not been fixed
-;;       - https://github.com/redhat-developer/yaml-language-server/pull/841
-;;       - https://github.com/redhat-developer/yaml-language-server/issues/998
-;;       - https://github.com/redhat-developer/yaml-language-server/issues/307
+;; TODO
 
 ;;; Code:
 
 (require 'eglot)
 
+(defgroup eglot-yaml nil
+  "YAML Language Server protocol extention for Eglot."
+  :prefix "eglot-yaml-"
+  :group 'eglot)
+
 (defvar eglot-yaml--file-schema-alist nil
   "Alist mapping file to schema URIs.")
 
-(defvar eglot-yaml-custom-schema-providers '(eglot-yaml-resolve-kubernetes-schema)
+(defcustom eglot-yaml-custom-schema-resolvers
+  '(eglot-yaml-kubernetes-schema-resolver)
   "Custom schema providers.
-A list of functions that take (BUFFER) and return schema-uri or nil.")
+List of functions that take (BUFFER) and return schema-uri or nil."
+  :type '(repeat function))
+
+(defcustom eglot-yaml-kubernetes-schema-base-url
+  "https://raw.githubusercontent.com/yannh/kubernetes-json-schema/master/v1.33.4-standalone-strict"
+  "Kubernetes schema catalog base URL."
+  :type 'string)
+
+(defcustom eglot-yaml-kubernetes-crds-schema-base-url
+  "https://raw.githubusercontent.com/datreeio/CRDs-catalog/main"
+  "Kubernetes CRDs schema catalog base URL."
+  :type 'string)
+
 
 ;;;###autoload
 (defclass eglot-yaml-lsp-server (eglot-lsp-server) ()
@@ -65,12 +74,12 @@ A list of functions that take (BUFFER) and return schema-uri or nil.")
   (eglot-yaml--resolve-schema document-uri))
 
 (defun eglot-yaml--resolve-schema (document-uri)
-  "Resolve DOCUMENT-URI schema by `eglot-yaml-custom-schema-providers'."
+  "Resolve DOCUMENT-URI schema by `eglot-yaml-custom-schema-resolvers'."
   (when-let* ((buffer (get-file-buffer (eglot-uri-to-path document-uri))))
-    (cl-loop for x in eglot-yaml-custom-schema-providers
+    (cl-loop for x in eglot-yaml-custom-schema-resolvers
              for schema-uri = (funcall x buffer)
              when schema-uri
-             return schema-uri))))
+             return schema-uri)))
 
 (defun eglot-yaml-show-schema (server)
   "Show current buffer schema."
@@ -85,7 +94,7 @@ IF SERVER is nil, only register SCHEMA-URI for future LSP session."
                  (list server (eglot-yaml--read-schema server :uri nil))))
   (eglot-yaml--register-file-schema (buffer-file-name) schema-uri)
   (when server
-    (eglot--signal-project-schema-associations server)))
+    (eglot-yaml--signal-project-schema-associations server)))
 
 (defun eglot-yaml-select-schema (server)
   "Select current buffer schema by name."
@@ -110,9 +119,9 @@ IF SERVER is nil, only unregister SCHEMA-URI for future LSP session."
   (interactive (list (eglot--current-server-or-lose)))
   (eglot-yaml--unregister-file-schema (buffer-file-name))
   (when server
-    (eglot--signal-project-schema-associations server)))
+    (eglot-yaml--signal-project-schema-associations server)))
 
-(defun eglot--signal-project-schema-associations (server)
+(defun eglot-yaml--signal-project-schema-associations (server)
   "Signal schema associations of project to SERVER."
   (eglot-yaml--signal-schema-associations
    server
@@ -145,12 +154,8 @@ Return value is a plist of the form:
     associations))
 
 
-(defvar eglot-yaml-kubernetes-schema-base-url "https://raw.githubusercontent.com/yannh/kubernetes-json-schema/master/v1.33.4-standalone-strict")
-(defvar eglot-yaml-kubernetes-crd-schema-base-url "https://raw.githubusercontent.com/datreeio/CRDs-catalog/main")
-
-;; TODO: defcustom
 ;; TODO: skip when multi schema yaml
-(defun eglot-yaml-resolve-kubernetes-schema (buffer)
+(defun eglot-yaml-kubernetes-schema-resolver (buffer)
   "Resolve kubernetes schmema for BUFFER."
   (with-current-buffer buffer
     (save-excursion
@@ -168,7 +173,7 @@ Return value is a plist of the form:
             ;; CRD: https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json
             (pcase-let ((`(,group ,version) (string-split api-version "/")))
               (format "%s/%s/%s_%s.json"
-                      eglot-yaml-kubernetes-crd-schema-base-url
+                      eglot-yaml-kubernetes-crds-schema-base-url
                       (downcase group) (downcase kind) (downcase version)))))))))
 
 
@@ -178,7 +183,7 @@ Return value is a plist of the form:
 
 (cl-defmethod eglot-yaml--after-connect ((server eglot-yaml-lsp-server))
   "Hook funtion to run after connecting to SERVER."
-  (eglot--signal-project-schema-associations server)
+  (eglot-yaml--signal-project-schema-associations server)
   (eglot-yaml--signal-register-custom-schema-request server))
 
 (add-hook 'eglot-connect-hook #'eglot-yaml--after-connect)
