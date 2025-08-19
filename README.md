@@ -1,6 +1,6 @@
 # eglot-yaml
 
-YAML Language Server protocol extention for [Eglot](https://github.com/joaotavora/eglot/).
+YAML Language Server protocol extension for [Eglot](https://github.com/joaotavora/eglot/).
 
 ## Installation
 ```lisp
@@ -12,7 +12,11 @@ YAML Language Server protocol extention for [Eglot](https://github.com/joaotavor
                '((yaml-ts-mode yaml-mode) eglot-yaml-lsp-server "yaml-language-server" "--stdio")))
 ```
 
-## Featuers
+
+## Features
+
+### Dynamic schema association
+You can associate a schema with a YAML document from buffer.
 
 - `M-x eglot-yaml-select-schema`: Select a schema for the current buffer by schema name.
 - `M-x eglot-yaml-set-schema`: Set a schema for the current buffer by schema uri.
@@ -20,6 +24,12 @@ YAML Language Server protocol extention for [Eglot](https://github.com/joaotavor
 - `M-x eglot-yaml-show-schema`: Show the current schema for the current buffer.
 
 Schema association is persisted within current Emacs session, and is not saved to disk.
+
+### Custom schema resolver
+You can configure `eglot-yaml-custom-schema-resolvers` to define custom schema resolvers.
+
+Kubernetes schema resolver is provided by default.
+
 
 ## License
 GPL-3.0

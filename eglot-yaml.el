@@ -1,9 +1,10 @@
-;;; eglot-yaml.el --- YAML Language Server protocol extention for Eglot -*- lexical-binding: t; -*-
+;;; eglot-yaml.el --- YAML Language Server protocol extension for Eglot -*- lexical-binding: t; -*-
 
 ;; Copyright (C) 2025  Taiki Sugawara
 
 ;; Author: Taiki Sugawara <buzz.taiki@gmail.com>
-;; Keywords:
+;; URL: https://github.com/buzztaiki/eglot-yaml
+;; Package-Requires: ((emacs "30.1") (eglot "1.18"))
 
 ;; This program is free software; you can redistribute it and/or modify
 ;; it under the terms of the GNU General Public License as published by
@@ -20,28 +21,41 @@
 
 ;;; Commentary:
 
-;;
-
-;;; TODO:
-;; - custom schema provider
-;;   - use yaml/registerCustomSchemaRequest client notification and handle custom/schema/request server request
-;;   - but:
-;;     - custom/schema/request could not use kubernetes special uri
-;;     - "Matches multiple schemas when only one must validate" problem has not been fixed
-;;       - https://github.com/redhat-developer/yaml-language-server/pull/841
-;;       - https://github.com/redhat-developer/yaml-language-server/issues/998
-;;       - https://github.com/redhat-developer/yaml-language-server/issues/307
+;; TODO
 
 ;;; Code:
 
 (require 'eglot)
 
+(defgroup eglot-yaml nil
+  "YAML Language Server protocol extension for Eglot."
+  :prefix "eglot-yaml-"
+  :group 'eglot)
+
 (defvar eglot-yaml--file-schema-alist nil
   "Alist mapping file to schema URIs.")
+
+(defcustom eglot-yaml-custom-schema-resolvers
+  '(eglot-yaml-kubernetes-schema-resolver)
+  "List of custom schema resolver functions.
+Each function takes no arguments and operates on the document buffer, and should return a schema URI or nil."
+  :type '(repeat function))
+
+(defcustom eglot-yaml-kubernetes-schema-base-url
+  "https://raw.githubusercontent.com/yannh/kubernetes-json-schema/master/v1.33.4-standalone-strict"
+  "Kubernetes schema catalog base URL."
+  :type 'string)
+
+(defcustom eglot-yaml-kubernetes-crds-schema-base-url
+  "https://raw.githubusercontent.com/datreeio/CRDs-catalog/main"
+  "Kubernetes CRDs schema catalog base URL."
+  :type 'string)
+
 
 ;;;###autoload
 (defclass eglot-yaml-lsp-server (eglot-lsp-server) ()
   :documentation "YAML language server.")
+
 
 (defun eglot-yaml--get-all-schemas (server)
   (jsonrpc-request server :yaml/get/all/jsonSchemas (vector (eglot-path-to-uri (buffer-file-name)))))
@@ -52,6 +66,15 @@
 (defun eglot-yaml--signal-schema-associations (server associations)
   (jsonrpc-notify server :json/schemaAssociations associations))
 
+(defun eglot-yaml--signal-register-custom-schema-request (server)
+  (jsonrpc-notify server :yaml/registerCustomSchemaRequest nil))
+
+(cl-defmethod eglot-handle-request
+  ((_server eglot-yaml-lsp-server) (_method (eql custom/schema/request))
+   document-uri &rest _)
+  (eglot-yaml--resolve-schema document-uri))
+
+
 (defun eglot-yaml-show-schema (server)
   "Show current buffer schema."
   (interactive (list (eglot--current-server-or-lose)))
@@ -60,12 +83,12 @@
 ;;;###autoload
 (defun eglot-yaml-set-schema (server schema-uri)
   "Set current buffer SCHEMA-URI.
-IF SERVER is nil, only register SCHEMA-URI for future LSP session."
+If SERVER is nil, only register SCHEMA-URI for future LSP session."
   (interactive (let ((server (eglot--current-server-or-lose)))
                  (list server (eglot-yaml--read-schema server :uri nil))))
   (eglot-yaml--register-file-schema (buffer-file-name) schema-uri)
   (when server
-    (eglot--signal-project-schema-associations server)))
+    (eglot-yaml--signal-project-schema-associations server)))
 
 (defun eglot-yaml-select-schema (server)
   "Select current buffer schema by name."
@@ -90,9 +113,9 @@ IF SERVER is nil, only unregister SCHEMA-URI for future LSP session."
   (interactive (list (eglot--current-server-or-lose)))
   (eglot-yaml--unregister-file-schema (buffer-file-name))
   (when server
-    (eglot--signal-project-schema-associations server)))
+    (eglot-yaml--signal-project-schema-associations server)))
 
-(defun eglot--signal-project-schema-associations (server)
+(defun eglot-yaml--signal-project-schema-associations (server)
   "Signal schema associations of project to SERVER."
   (eglot-yaml--signal-schema-associations
    server
@@ -125,13 +148,46 @@ Return value is a plist of the form:
     associations))
 
 
+(defun eglot-yaml--resolve-schema (document-uri)
+  "Resolve DOCUMENT-URI schema by `eglot-yaml-custom-schema-resolvers'."
+  (when-let* ((buffer (get-file-buffer (eglot-uri-to-path document-uri))))
+    (cl-loop for x in eglot-yaml-custom-schema-resolvers
+             for schema-uri = (with-current-buffer buffer
+                                (save-excursion
+                                  (save-restriction
+                                    (widen)
+                                    (goto-char (point-min))
+                                    (funcall x))))
+             when schema-uri
+             return schema-uri)))
+
+;; TODO: skip when multi schema yaml
+(defun eglot-yaml-kubernetes-schema-resolver ()
+  "Resolve kubernetes schema for current buffer."
+  ;; see https://github.com/yannh/kubeconform#overriding-schemas-location
+  (when-let* ((api-version (save-excursion (and (re-search-forward "^apiVersion:[ \t]*\\([^ \t\n]+\\).*$" nil t) (match-string 1))))
+              (kind (save-excursion (and (re-search-forward "^kind:[ \t]*\\([^ \t\n]+\\).*$" nil t) (match-string 1)))))
+    (if (not (string-match-p "\\." api-version))
+        ;; Kubernetes: https://raw.githubusercontent.com/yannh/kubernetes-json-schema/master/{{.NormalizedKubernetesVersion}}-standalone{{.StrictSuffix}}/{{.ResourceKind}}{{.KindSuffix}}.json
+        (format "%s/%s-%s.json"
+                eglot-yaml-kubernetes-schema-base-url
+                (downcase kind)
+                (string-replace "/" "-" (downcase api-version)))
+      ;; CRD: https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json
+      (pcase-let ((`(,group ,version) (string-split api-version "/")))
+        (format "%s/%s/%s_%s.json"
+                eglot-yaml-kubernetes-crds-schema-base-url
+                (downcase group) (downcase kind) (downcase version))))))
+
+
 (cl-defgeneric eglot-yaml--after-connect (_server)
-  "Hook funtion to run after connecting to SERVER."
+  "Hook function to run after connecting to SERVER."
   nil)
 
 (cl-defmethod eglot-yaml--after-connect ((server eglot-yaml-lsp-server))
-  "Hook funtion to run after connecting to SERVER."
-  (eglot--signal-project-schema-associations server))
+  "Hook function to run after connecting to SERVER."
+  (eglot-yaml--signal-project-schema-associations server)
+  (eglot-yaml--signal-register-custom-schema-request server))
 
 (add-hook 'eglot-connect-hook #'eglot-yaml--after-connect)
 
