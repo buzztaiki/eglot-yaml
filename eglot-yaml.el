@@ -52,6 +52,18 @@
 (defun eglot-yaml--signal-schema-associations (server associations)
   (jsonrpc-notify server :json/schemaAssociations associations))
 
+(defun eglot-yaml--signal-register-custom-schema-request (server)
+  (jsonrpc-notify server :yaml/registerCustomSchemaRequest nil))
+
+(cl-defmethod eglot-handle-request
+  ((_server eglot-yaml-lsp-server) (_method (eql custom/schema/request))
+   document-uri &rest _)
+  (eglot-yaml--resolve-schema document-uri))
+
+(defun eglot-yaml--resolve-schema (document-uri)
+  "Resolve DOCUMENT-URI custom schema."
+  (assoc-default (eglot-uri-to-path document-uri) eglot-yaml--file-schema-alist))
+
 (defun eglot-yaml-show-schema (server)
   "Show current buffer schema."
   (interactive (list (eglot--current-server-or-lose)))
@@ -131,7 +143,8 @@ Return value is a plist of the form:
 
 (cl-defmethod eglot-yaml--after-connect ((server eglot-yaml-lsp-server))
   "Hook funtion to run after connecting to SERVER."
-  (eglot--signal-project-schema-associations server))
+  (eglot--signal-project-schema-associations server)
+  (eglot-yaml--signal-register-custom-schema-request))
 
 (add-hook 'eglot-connect-hook #'eglot-yaml--after-connect)
 
