@@ -174,10 +174,14 @@ Return value is a plist of the form:
                 (downcase kind)
                 (string-replace "/" "-" (downcase api-version)))
       ;; CRD: https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json
-      (pcase-let ((`(,group ,version) (string-split api-version "/")))
-        (format "%s/%s/%s_%s.json"
-                eglot-yaml-kubernetes-crds-schema-base-url
-                (downcase group) (downcase kind) (downcase version))))))
+      (pcase (string-split api-version "/")
+        ((and `(,group ,version)
+              (guard (not (string= group "kustomize.config.k8s.io"))))
+         (format "%s/%s/%s_%s.json"
+                 eglot-yaml-kubernetes-crds-schema-base-url
+                 (downcase group) (downcase kind) (downcase version)))
+        (_ nil)))))
+
 
 
 (cl-defgeneric eglot-yaml--after-connect (_server)
