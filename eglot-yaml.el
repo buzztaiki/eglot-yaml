@@ -27,6 +27,7 @@
 
 (require 'eglot)
 (require 'map)
+(require 'url-http)
 
 (defgroup eglot-yaml nil
   "YAML Language Server protocol extension for Eglot."
@@ -35,6 +36,9 @@
 
 (defvar eglot-yaml--file-schema-alist nil
   "Alist mapping file to schema URIs.")
+
+(defvar eglot-yaml--kubernetes-schema-existence-cache (make-hash-table :test 'equal)
+  "Cache for Kubernetes schema existence.")
 
 (defcustom eglot-yaml-custom-schema-resolvers
   '(eglot-yaml-kubernetes-schema-resolver)
@@ -158,33 +162,39 @@ Return value is a plist of the form:
                                 (save-excursion
                                   (save-restriction
                                     (widen)
-                                    (goto-char (point-min))
                                     (funcall x))))
              when schema-uri
              return schema-uri)))
 
-;; TODO: skip when multi schema yaml
 (defun eglot-yaml-kubernetes-schema-resolver ()
   "Resolve kubernetes schema for current buffer."
+  ;; limited support for multi schema yaml
+  (goto-char (or (re-search-backward "^---" nil t) (point-min)))
+
   ;; see https://github.com/yannh/kubeconform#overriding-schemas-location
   (when-let* ((api-version (save-excursion (and (re-search-forward "^apiVersion:[ \t]*\\([^ \t\n]+\\).*$" nil t) (match-string 1))))
               (kind (save-excursion (and (re-search-forward "^kind:[ \t]*\\([^ \t\n]+\\).*$" nil t) (match-string 1)))))
-    (if (not (string-match-p "\\." api-version))
-        ;; Kubernetes: https://raw.githubusercontent.com/yannh/kubernetes-json-schema/master/{{.NormalizedKubernetesVersion}}-standalone{{.StrictSuffix}}/{{.ResourceKind}}{{.KindSuffix}}.json
-        (format "%s/%s-%s.json"
-                eglot-yaml-kubernetes-schema-base-url
-                (downcase kind)
-                (string-replace "/" "-" (downcase api-version)))
-      ;; CRD: https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json
+    (let (schema-urls)
+      ;; Kubernetes: https://raw.githubusercontent.com/yannh/kubernetes-json-schema/master/{{.NormalizedKubernetesVersion}}-standalone{{.StrictSuffix}}/{{.ResourceKind}}{{.KindSuffix}}.json
+      (push (format "%s/%s-%s.json" eglot-yaml-kubernetes-schema-base-url
+                    (downcase kind)
+                    (string-replace "/" "-" (string-replace ".k8s.io" "" api-version)))
+            schema-urls)
       (pcase (string-split api-version "/")
-        ((and `(,group ,version)
-              (guard (not (string= group "kustomize.config.k8s.io"))))
-         (format "%s/%s/%s_%s.json"
-                 eglot-yaml-kubernetes-crds-schema-base-url
-                 (downcase group) (downcase kind) (downcase version)))
-        (_ nil)))))
+        (`(,group ,version)
+         ;; CRD: https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json
+         (push (format "%s/%s/%s_%s.json" eglot-yaml-kubernetes-crds-schema-base-url
+                       (downcase group) (downcase kind) (downcase version))
+               schema-urls)))
+      (seq-find #'eglot-yaml--kubernetes-schema-exists-p (nreverse schema-urls)))))
 
-
+(defun eglot-yaml--kubernetes-schema-exists-p (url)
+  "Check if Kubernetes schema URL exists, with caching."
+  (unless (map-contains-key eglot-yaml--kubernetes-schema-existence-cache url)
+    (setf (map-elt eglot-yaml--kubernetes-schema-existence-cache url)
+          (let ((url-show-status nil))
+            (url-http-file-exists-p url))))
+  (map-elt eglot-yaml--kubernetes-schema-existence-cache url))
 
 (cl-defgeneric eglot-yaml--after-connect (_server)
   "Hook function to run after connecting to SERVER."
