@@ -26,6 +26,7 @@
 ;;; Code:
 
 (require 'eglot)
+(require 'map)
 
 (defgroup eglot-yaml nil
   "YAML Language Server protocol extension for Eglot."
@@ -99,13 +100,13 @@ If SERVER is nil, only register SCHEMA-URI for future LSP session."
   (let* ((schemas (cl-loop
                    for x in (cons '(:name "Kubernetes" :uri "kubernetes")
                                   (seq-into (eglot-yaml--get-all-schemas server) 'list))
-                   if (plist-get x key-prop)
-                   collect (cons (plist-get x key-prop) x)))
+                   if (map-elt x key-prop)
+                   collect (cons (map-elt x key-prop) x)))
          (completion-extra-properties
           (list :annotation-function
-                (lambda (x) (format " %s" (or (plist-get (alist-get x schemas nil nil #'equal) :description) "")))))
+                (lambda (x) (format " %s" (map-nested-elt schemas (list x :description) "")))))
          (key (completing-read "Select schema: " schemas nil require-match)))
-    (plist-get (alist-get key schemas nil nil #'equal) :uri)))
+    (map-nested-elt schemas (list key :uri) "")))
 
 ;;;###autoload
 (defun eglot-yaml-reset-schema (server)
@@ -125,7 +126,7 @@ IF SERVER is nil, only unregister SCHEMA-URI for future LSP session."
 (defun eglot-yaml--register-file-schema (file schema-uri)
   "Register FILE and SCHEMA-URI pair to `eglot-yaml--file-schema-alist'."
   (let* ((absname (expand-file-name file)))
-    (setf (alist-get absname eglot-yaml--file-schema-alist nil nil #'equal)
+    (setf (map-elt eglot-yaml--file-schema-alist absname)
           schema-uri)))
 
 (defun eglot-yaml--unregister-file-schema (file)
@@ -144,8 +145,8 @@ Return value is a plist of the form:
       (when-let* ((relname (and (string-prefix-p root file) (file-relative-name file root)))
                   (glob (concat "/" relname))
                   (schema-prop (intern (concat ":" schema-uri))))
-        (setq associations (plist-put associations schema-prop
-                                      (vconcat (list glob) (plist-get associations schema-prop))))))
+        (setf (map-elt associations schema-prop)
+              (vconcat (list glob) (map-elt associations schema-prop)))))
     associations))
 
 
