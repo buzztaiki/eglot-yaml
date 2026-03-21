@@ -65,8 +65,8 @@ Each function takes no arguments and operates on the document buffer, and should
 (defun eglot-yaml--get-all-schemas (server)
   (jsonrpc-request server :yaml/get/all/jsonSchemas (vector (eglot-path-to-uri (buffer-file-name)))))
 
-(defun eglot-yaml--get-schemas (server)
-  (jsonrpc-request server :yaml/get/jsonSchema (vector (eglot-path-to-uri (buffer-file-name)))))
+(defun eglot-yaml--get-schema (server)
+  (seq-first (jsonrpc-request server :yaml/get/jsonSchema (vector (eglot-path-to-uri (buffer-file-name))))))
 
 (defun eglot-yaml--signal-schema-associations (server associations)
   (jsonrpc-notify server :json/schemaAssociations associations))
@@ -83,14 +83,15 @@ Each function takes no arguments and operates on the document buffer, and should
 (defun eglot-yaml-show-schema (server)
   "Show current buffer schema."
   (interactive (list (eglot--current-server-or-lose)))
-  (message "%s" (eglot-yaml--get-schemas server)))
+  (message "%s" (eglot-yaml--get-schema server)))
 
 ;;;###autoload
 (defun eglot-yaml-set-schema (server schema-uri)
   "Set current buffer SCHEMA-URI.
 If SERVER is nil, only register SCHEMA-URI for future LSP session."
-  (interactive (let ((server (eglot--current-server-or-lose)))
-                 (list server (eglot-yaml--read-schema server :uri nil))))
+  (interactive (let* ((server (eglot--current-server-or-lose))
+                      (current (map-elt (eglot-yaml--get-schema server) :uri)))
+                 (list server (read-string "Schema URI: " current))))
   (eglot-yaml--register-file-schema (buffer-file-name) schema-uri)
   (when server
     (eglot-yaml--signal-project-schema-associations server)))
@@ -98,19 +99,19 @@ If SERVER is nil, only register SCHEMA-URI for future LSP session."
 (defun eglot-yaml-select-schema (server)
   "Select current buffer schema by name."
   (interactive (list (eglot--current-server-or-lose)))
-  (eglot-yaml-set-schema server (eglot-yaml--read-schema server :name t)))
+  (eglot-yaml-set-schema server (eglot-yaml--read-schema server)))
 
-(defun eglot-yaml--read-schema (server key-prop require-match)
+(defun eglot-yaml--read-schema (server)
   (let* ((schemas (cl-loop
-                   for x in (cons '(:name "Kubernetes" :uri "kubernetes")
-                                  (seq-into (eglot-yaml--get-all-schemas server) 'list))
-                   if (map-elt x key-prop)
-                   collect (cons (map-elt x key-prop) x)))
+                   for schema in (cons '(:name "Kubernetes" :uri "kubernetes")
+                                       (seq-into (eglot-yaml--get-all-schemas server) 'list))
+                   for name = (map-elt schema :name)
+                   when name collect (cons name schema)))
          (completion-extra-properties
           (list :annotation-function
-                (lambda (x) (format " %s" (map-nested-elt schemas (list x :description) "")))))
-         (key (completing-read "Select schema: " schemas nil require-match)))
-    (map-nested-elt schemas (list key :uri) "")))
+                (lambda (name) (format " %s" (map-nested-elt schemas (list name :description) "")))))
+         (name (completing-read "Select schema: " schemas nil t)))
+    (map-nested-elt schemas (list name :uri))))
 
 ;;;###autoload
 (defun eglot-yaml-reset-schema (server)
