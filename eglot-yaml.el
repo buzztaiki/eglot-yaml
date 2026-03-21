@@ -158,14 +158,15 @@ Return value is a plist of the form:
                                 (save-excursion
                                   (save-restriction
                                     (widen)
-                                    (goto-char (point-min))
                                     (funcall x))))
              when schema-uri
              return schema-uri)))
 
-;; TODO: skip when multi schema yaml
 (defun eglot-yaml-kubernetes-schema-resolver ()
   "Resolve kubernetes schema for current buffer."
+  ;; limited support for multi schema yaml
+  (goto-char (or (re-search-backward "^---" nil t) (point-min)))
+
   ;; see https://github.com/yannh/kubeconform#overriding-schemas-location
   (when-let* ((api-version (save-excursion (and (re-search-forward "^apiVersion:[ \t]*\\([^ \t\n]+\\).*$" nil t) (match-string 1))))
               (kind (save-excursion (and (re-search-forward "^kind:[ \t]*\\([^ \t\n]+\\).*$" nil t) (match-string 1)))))
