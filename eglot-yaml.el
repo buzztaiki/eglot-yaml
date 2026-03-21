@@ -95,16 +95,17 @@ If SERVER is nil, only register SCHEMA-URI for future LSP session."
   (interactive (list (eglot--current-server-or-lose)))
   (eglot-yaml-set-schema server (eglot-yaml--read-schema server :name t)))
 
-(defun eglot-yaml--read-schema (server prop require-match)
+(defun eglot-yaml--read-schema (server key-prop require-match)
   (let* ((schemas (cl-loop
                    for x in (cons '(:name "Kubernetes" :uri "kubernetes")
                                   (seq-into (eglot-yaml--get-all-schemas server) 'list))
-                   if (plist-get x prop)
-                   collect (cons (plist-get x prop) x)))
+                   if (plist-get x key-prop)
+                   collect (cons (plist-get x key-prop) x)))
          (completion-extra-properties
           (list :annotation-function
-                (lambda (x) (format " %s" (or (plist-get (assoc-default x schemas) :description) ""))))))
-    (completing-read "Select schema: " schemas nil require-match)))
+                (lambda (x) (format " %s" (or (plist-get (alist-get x schemas nil nil #'equal) :description) "")))))
+         (key (completing-read "Select schema: " schemas nil require-match)))
+    (plist-get (alist-get key schemas nil nil #'equal) :uri)))
 
 ;;;###autoload
 (defun eglot-yaml-reset-schema (server)
