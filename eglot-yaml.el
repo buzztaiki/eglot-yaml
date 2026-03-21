@@ -131,7 +131,7 @@ IF SERVER is nil, only unregister SCHEMA-URI for future LSP session."
 (defun eglot-yaml--register-file-schema (file schema-uri)
   "Register FILE and SCHEMA-URI pair to `eglot-yaml--file-schema-alist'."
   (let* ((absname (expand-file-name file)))
-    (setf (map-elt eglot-yaml--file-schema-alist absname)
+    (setf (alist-get absname eglot-yaml--file-schema-alist nil nil #'equal)
           schema-uri)))
 
 (defun eglot-yaml--unregister-file-schema (file)
@@ -150,8 +150,8 @@ Return value is a plist of the form:
       (when-let* ((relname (and (string-prefix-p root file) (file-relative-name file root)))
                   (glob (concat "/" relname))
                   (schema-prop (intern (concat ":" schema-uri))))
-        (setf (map-elt associations schema-prop)
-              (vconcat (list glob) (map-elt associations schema-prop)))))
+        (setf (plist-get associations schema-prop)
+              (vconcat (list glob) (plist-get associations schema-prop)))))
     associations))
 
 
