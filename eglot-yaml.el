@@ -34,14 +34,15 @@
   :prefix "eglot-yaml-"
   :group 'eglot)
 
-(defvar eglot-yaml--file-schema-alist nil
-  "Alist mapping file to schema URIs.")
-
 (defvar eglot-yaml--kubernetes-schema-existence-cache (make-hash-table :test 'equal)
   "Cache for Kubernetes schema existence.")
 
+(defvar-local eglot-yaml--override-schema-uri nil
+  "Override schema URI for current buffer.")
+
 (defcustom eglot-yaml-custom-schema-resolvers
-  '(eglot-yaml-kubernetes-schema-resolver)
+  '(eglot-yaml-resolve-override-schema
+    eglot-yaml-resolve-kubernetes-schema)
   "List of custom schema resolver functions.
 Each function takes no arguments and operates on the document buffer, and should return a schema URI or nil."
   :type '(repeat function))
@@ -85,16 +86,13 @@ Each function takes no arguments and operates on the document buffer, and should
   (interactive (list (eglot--current-server-or-lose)))
   (message "%s" (eglot-yaml--get-schema server)))
 
-;;;###autoload
 (defun eglot-yaml-set-schema (server schema-uri)
-  "Set current buffer SCHEMA-URI.
-If SERVER is nil, only register SCHEMA-URI for future LSP session."
+  "Set current buffer SCHEMA-URI. "
   (interactive (let* ((server (eglot--current-server-or-lose))
                       (current (map-elt (eglot-yaml--get-schema server) :uri)))
                  (list server (read-string "Schema URI: " current))))
-  (eglot-yaml--register-file-schema (buffer-file-name) schema-uri)
-  (when server
-    (eglot-yaml--signal-project-schema-associations server)))
+  (setq eglot-yaml--override-schema-uri schema-uri)
+  (eglot-signal-didChangeConfiguration server))
 
 (defun eglot-yaml-select-schema (server)
   "Select current buffer schema by name."
@@ -113,47 +111,11 @@ If SERVER is nil, only register SCHEMA-URI for future LSP session."
          (name (completing-read "Select schema: " schemas nil t)))
     (map-nested-elt schemas (list name :uri))))
 
-;;;###autoload
 (defun eglot-yaml-reset-schema (server)
-  "Reset current buffer schema.
-IF SERVER is nil, only unregister SCHEMA-URI for future LSP session."
+  "Reset current buffer schema."
   (interactive (list (eglot--current-server-or-lose)))
-  (eglot-yaml--unregister-file-schema (buffer-file-name))
-  (when server
-    (eglot-yaml--signal-project-schema-associations server)))
-
-(defun eglot-yaml--signal-project-schema-associations (server)
-  "Signal schema associations of project to SERVER."
-  (eglot-yaml--signal-schema-associations
-   server
-   (eglot-yaml--collect-project-schema-associations (eglot--project server))))
-
-(defun eglot-yaml--register-file-schema (file schema-uri)
-  "Register FILE and SCHEMA-URI pair to `eglot-yaml--file-schema-alist'."
-  (let* ((absname (expand-file-name file)))
-    (setf (alist-get absname eglot-yaml--file-schema-alist nil nil #'equal)
-          schema-uri)))
-
-(defun eglot-yaml--unregister-file-schema (file)
-  "Unregister FILE from `eglot-yaml--file-schema-alist'."
-  (setq eglot-yaml--file-schema-alist
-        (assoc-delete-all (expand-file-name file) eglot-yaml--file-schema-alist)))
-
-(defun eglot-yaml--collect-project-schema-associations (project)
-  "Collect schema associations of PROJECT.
-
-Return value is a plist of the form:
-\(:SCHEMA-URI1 [\"glob\" ...] :SCHEMA-URI2 [\"glob\" ...] ...)"
-  (let ((root (expand-file-name (project-root project)))
-        associations)
-    (pcase-dolist (`(,file . ,schema-uri) eglot-yaml--file-schema-alist)
-      (when-let* ((relname (and (string-prefix-p root file) (file-relative-name file root)))
-                  (glob (concat "/" relname))
-                  (schema-prop (intern (concat ":" schema-uri))))
-        (setf (plist-get associations schema-prop)
-              (vconcat (list glob) (plist-get associations schema-prop)))))
-    associations))
-
+  (setq eglot-yaml--override-schema-uri nil)
+  (eglot-signal-didChangeConfiguration server))
 
 (defun eglot-yaml--resolve-schema (document-uri)
   "Resolve DOCUMENT-URI schema by `eglot-yaml-custom-schema-resolvers'."
@@ -167,7 +129,11 @@ Return value is a plist of the form:
              when schema-uri
              return schema-uri)))
 
-(defun eglot-yaml-kubernetes-schema-resolver ()
+(defun eglot-yaml-resolve-override-schema ()
+  "Resolve override schema for current buffer."
+  eglot-yaml--override-schema-uri)
+
+(defun eglot-yaml-resolve-kubernetes-schema ()
   "Resolve kubernetes schema for current buffer."
   ;; limited support for multi schema yaml
   (goto-char (or (re-search-backward "^---" nil t) (point-min)))
@@ -203,7 +169,6 @@ Return value is a plist of the form:
 
 (cl-defmethod eglot-yaml--after-connect ((server eglot-yaml-lsp-server))
   "Hook function to run after connecting to SERVER."
-  (eglot-yaml--signal-project-schema-associations server)
   (eglot-yaml--signal-register-custom-schema-request server))
 
 (add-hook 'eglot-connect-hook #'eglot-yaml--after-connect)
