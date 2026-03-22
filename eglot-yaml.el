@@ -40,6 +40,14 @@
 (defvar-local eglot-yaml--override-schema-uri nil
   "Override schema URI for current buffer.")
 
+(defcustom eglot-yaml-schema-associations nil
+  "User defined JSON schema associations."
+  :type '(repeat (cons (string :tag "Schema URI")
+                       (repeat :tag "Globs" string)))
+  :set (lambda (symbol value)
+         (set-default-toplevel-value symbol value)
+         (mapc #'eglot-yaml--signal-schema-associations (eglot-yaml--all-servers))))
+
 (defcustom eglot-yaml-custom-schema-resolvers
   '(eglot-yaml-resolve-override-schema
     eglot-yaml-resolve-kubernetes-schema)
@@ -69,8 +77,8 @@ Each function takes no arguments and operates on the document buffer, and should
 (defun eglot-yaml--get-schema (server)
   (seq-first (jsonrpc-request server :yaml/get/jsonSchema (vector (eglot-path-to-uri (buffer-file-name))))))
 
-(defun eglot-yaml--signal-schema-associations (server associations)
-  (jsonrpc-notify server :json/schemaAssociations associations))
+(defun eglot-yaml--signal-schema-associations (server)
+  (jsonrpc-notify server :json/schemaAssociations (vector (eglot-yaml--schema-associations))))
 
 (defun eglot-yaml--signal-register-custom-schema-request (server)
   (jsonrpc-notify server :yaml/registerCustomSchemaRequest nil))
@@ -116,6 +124,13 @@ Each function takes no arguments and operates on the document buffer, and should
   (interactive (list (eglot--current-server-or-lose)))
   (setq eglot-yaml--override-schema-uri nil)
   (eglot-signal-didChangeConfiguration server))
+
+(defun eglot-yaml--schema-associations ()
+  "Get schema associations for json/schemaAssociations notification."
+  (seq-mapcat
+   (pcase-lambda (`(,schema-uri . ,globs))
+     (list (intern (concat ":" schema-uri)) (apply #'vector globs)))
+   eglot-yaml-schema-associations))
 
 (defun eglot-yaml--resolve-schema (document-uri)
   "Resolve DOCUMENT-URI schema by `eglot-yaml-custom-schema-resolvers'."
@@ -163,12 +178,19 @@ Each function takes no arguments and operates on the document buffer, and should
             (url-http-file-exists-p url))))
   (map-elt eglot-yaml--kubernetes-schema-existence-cache url))
 
+(defun eglot-yaml--all-servers ()
+  "Get all connected `eglot-yaml-lsp-server' instances."
+  (cl-loop for servers
+           being hash-values of eglot--servers-by-project
+           append (seq-filter #'eglot-yaml-lsp-server-p servers)))
+
 (cl-defgeneric eglot-yaml--after-connect (_server)
   "Hook function to run after connecting to SERVER."
   nil)
 
 (cl-defmethod eglot-yaml--after-connect ((server eglot-yaml-lsp-server))
   "Hook function to run after connecting to SERVER."
+  (eglot-yaml--signal-schema-associations server)
   (eglot-yaml--signal-register-custom-schema-request server))
 
 (add-hook 'eglot-connect-hook #'eglot-yaml--after-connect)
