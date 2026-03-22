@@ -154,8 +154,8 @@ Each function takes no arguments and operates on the document buffer, and should
   (goto-char (or (re-search-backward "^---" nil t) (point-min)))
 
   ;; see https://github.com/yannh/kubeconform#overriding-schemas-location
-  (when-let* ((api-version (save-excursion (and (re-search-forward "^apiVersion:[ \t]*\\([^ \t\n]+\\).*$" nil t) (match-string 1))))
-              (kind (save-excursion (and (re-search-forward "^kind:[ \t]*\\([^ \t\n]+\\).*$" nil t) (match-string 1)))))
+  (when-let* ((api-version (save-excursion (and (re-search-forward "^apiVersion:[ \t]*\\([^ \t\n]+\\).*" nil t) (match-string 1))))
+              (kind (save-excursion (and (re-search-forward "^kind:[ \t]*\\([^ \t\n]+\\).*" nil t) (match-string 1)))))
     (let (schema-urls)
       ;; Kubernetes: https://raw.githubusercontent.com/yannh/kubernetes-json-schema/master/{{.NormalizedKubernetesVersion}}-standalone{{.StrictSuffix}}/{{.ResourceKind}}{{.KindSuffix}}.json
       (push (format "%s/%s-%s.json" eglot-yaml-kubernetes-schema-base-url
