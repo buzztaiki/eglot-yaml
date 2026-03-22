@@ -184,14 +184,11 @@ Each function takes no arguments and operates on the document buffer, and should
            being hash-values of eglot--servers-by-project
            append (seq-filter #'eglot-yaml-lsp-server-p servers)))
 
-(cl-defgeneric eglot-yaml--after-connect (_server)
+(defun eglot-yaml--after-connect (server)
   "Hook function to run after connecting to SERVER."
-  nil)
-
-(cl-defmethod eglot-yaml--after-connect ((server eglot-yaml-lsp-server))
-  "Hook function to run after connecting to SERVER."
-  (eglot-yaml--signal-schema-associations server)
-  (eglot-yaml--signal-register-custom-schema-request server))
+  (when (eglot-yaml-lsp-server-p server)
+    (eglot-yaml--signal-schema-associations server)
+    (eglot-yaml--signal-register-custom-schema-request server)))
 
 (add-hook 'eglot-connect-hook #'eglot-yaml--after-connect)
 
