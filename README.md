@@ -23,12 +23,20 @@ You can associate a schema with a YAML document from buffer.
 - `M-x eglot-yaml-reset-schema`: Reset the schema for the current buffer.
 - `M-x eglot-yaml-show-schema`: Show the current schema for the current buffer.
 
-Schema association is persisted within current Emacs session, and is not saved to disk.
+Schema association set via these commands is valid only while the buffer is open.
+
+### Schema associations
+You can configure `eglot-yaml-schema-associations` to define static schema associations by glob patterns.
+
+```lisp
+(setopt eglot-yaml-schema-associations
+        '(("https://example.com/schema.json" . ("example.yaml"))))
+```
 
 ### Custom schema resolver
 You can configure `eglot-yaml-custom-schema-resolvers` to define custom schema resolvers.
 
-Kubernetes schema resolver is provided by default.
+`eglot-yaml-resolve-override-schema` and `eglot-yaml-resolve-kubernetes-schema` are provided by default.
 
 
 ## License
