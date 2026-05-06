@@ -46,7 +46,8 @@
                        (repeat :tag "Globs" string)))
   :set (lambda (symbol value)
          (set-default-toplevel-value symbol value)
-         (mapc #'eglot-yaml--signal-schema-associations (eglot-yaml--all-servers))))
+         (when (featurep 'eglot-yaml)
+           (mapc #'eglot-yaml--signal-schema-associations (eglot-yaml--all-servers)))))
 
 (defcustom eglot-yaml-custom-schema-resolvers
   '(eglot-yaml-resolve-override-schema
